@@ -104,7 +104,7 @@ def handle_user_input(question):
 
 # Main function to set up the Streamlit app
 def main():
-    st.set_page_config(page_title='Chat with Your own PDFs', page_icon=':books:', layout="wide")
+    st.set_page_config(page_title='Chat with Your own PDFs', page_icon=':books:')
 
     st.write(css, unsafe_allow_html=True)
     st.write("""
@@ -125,6 +125,9 @@ def main():
 
     if "is_processing" not in st.session_state:
         st.session_state.is_processing = False
+        
+    if "user_input" not in st.session_state:
+        st.session_state.user_input = ""
 
     st.header('Chat with Your own PDFs :books:')
 
