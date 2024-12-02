@@ -96,15 +96,23 @@ def get_conversation_chain(vector_store):
     return conversation_chain
 
 
-# Function to handle user input and display the chat history
-def handle_user_input(question):
+# Callback function to handle input and reset the field
+def handle_user_input():
+    question = st.session_state.user_input  # Get the user input
+    if question:
+        # Call logic to handle the question
+        handle_question_logic(question)
+    st.session_state.user_input = ''  # Clear the input field
+
+# Logic for processing the user question
+def handle_question_logic(question):
     response = st.session_state.conversation({'question': question})
     st.session_state.chat_history = response['chat_history']
-
-
-# Function to handle submission
-def handle_submit():
-    st.session_state.user_input = ''  # Clear the input field after submission
+    for i, message in enumerate(st.session_state.chat_history):
+        if i % 2 == 0:
+            st.write(user_template.replace("{{MSG}}", message.content), unsafe_allow_html=True)
+        else:
+            st.write(bot_template.replace("{{MSG}}", message.content), unsafe_allow_html=True)
 
 
 # Main function to set up the Streamlit app
@@ -148,9 +156,7 @@ def main():
     # Text input at the bottom
     input_container = st.container()
     with input_container:
-        question = st.text_input("Ask anything to your PDF:", key="user_input", on_change=handle_submit)
-        if question and st.session_state.conversation:
-            handle_user_input(question)
+        question = st.text_input("Ask anything to your PDF:", key="user_input", on_change=handle_user_input)
 
     # Sidebar for file upload
     with st.sidebar:
