@@ -33,6 +33,7 @@ def get_pdf_text(pdf_files):
             text += doc.page_content
     return text
 
+
 # Function to split text into chunks
 def get_chunk_text(text):
     text_splitter = CharacterTextSplitter(
@@ -44,11 +45,11 @@ def get_chunk_text(text):
     chunks = text_splitter.split_text(text)
     return chunks
 
+
 # Function to create a vector store
 def get_vector_store(text_chunks):
-    # Use CohereEmbeddings for embeddings
     embeddings = CohereEmbeddings(
-        model=config.EMBEDDING_MODEL,  # Replace with your Cohere model name (e.g., "embed-english-v2.0")
+        model=config.EMBEDDING_MODEL,
         user_agent="langchain"
     )
 
@@ -72,19 +73,18 @@ def get_vector_store(text_chunks):
     else:
         vectorstore = Qdrant.from_documents(
             documents=documents,
-            embedding=embeddings,  # Changed from 'embedding' to 'embeddings'
+            embedding=embeddings,
             location=config.QDRANT_LOCATION,
             collection_name=config.QDRANT_COLLECTION_NAME,
             distance_func=config.QDRANT_DISTANCE_FUNC
         )
-    
+
     return vectorstore
+
 
 # Function to create a conversation chain
 def get_conversation_chain(vector_store):
-    # Define the Cohere LLM
     llm = ChatCohere(model="command-r-plus-08-2024")
-
     memory = ConversationBufferMemory(memory_key='chat_history', return_messages=True)
 
     conversation_chain = ConversationalRetrievalChain.from_llm(
@@ -95,14 +95,16 @@ def get_conversation_chain(vector_store):
 
     return conversation_chain
 
+
 # Function to handle user input and display the chat history
 def handle_user_input(question):
     response = st.session_state.conversation({'question': question})
     st.session_state.chat_history = response['chat_history']
 
+
 # Main function to set up the Streamlit app
 def main():
-    st.set_page_config(page_title='Chat with Your own PDFs', page_icon=':books:')
+    st.set_page_config(page_title='Chat with Your own PDFs', page_icon=':books:', layout="wide")
 
     st.write(css, unsafe_allow_html=True)
     st.write("""
@@ -123,9 +125,9 @@ def main():
 
     if "is_processing" not in st.session_state:
         st.session_state.is_processing = False
-    
+
     st.header('Chat with Your own PDFs :books:')
-    
+
     # Display chat history
     chat_container = st.container()
     with chat_container:
@@ -134,7 +136,7 @@ def main():
                 st.markdown(user_template.replace("{{MSG}}", message.content), unsafe_allow_html=True)
             else:
                 st.markdown(bot_template.replace("{{MSG}}", message.content), unsafe_allow_html=True)
-    
+
     # Text input at the bottom
     input_container = st.container()
     with input_container:
@@ -142,33 +144,28 @@ def main():
         if question and st.session_state.conversation:
             handle_user_input(question)
             st.session_state.user_input = ""  # Clear the input field after submission
-    
+
+    # Sidebar for file upload
     with st.sidebar:
-        st.subheader("Upload your Documents Here: ")
-        pdf_files = st.file_uploader("Choose your PDF Files and Press OK", type=['pdf'], accept_multiple_files=True)
-        
+        st.subheader("Upload your Documents Here:")
+        pdf_files = st.file_uploader("Choose your PDF Files", type=['pdf'], accept_multiple_files=True)
+
         ok_button_disabled = not pdf_files or st.session_state.is_processing
 
         if st.button("OK", disabled=ok_button_disabled):
             st.session_state.is_processing = True
             with st.spinner("Processing your PDFs..."):
                 try:
-                    # Get PDF Text
                     raw_text = get_pdf_text(pdf_files)
-
-                    # Get Text Chunks
                     text_chunks = get_chunk_text(raw_text)
-
-                    # Create Vector Store
                     vector_store = get_vector_store(text_chunks)
-                    
-                    # Create conversation chain
                     st.session_state.conversation = get_conversation_chain(vector_store)
-                    st.success("DONE!")
+                    st.success("Processing complete!")
                 except Exception as e:
                     st.error(f"An error occurred: {e}")
                 finally:
                     st.session_state.is_processing = False
+
 
 if __name__ == '__main__':
     main()
