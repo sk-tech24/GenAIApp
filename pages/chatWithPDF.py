@@ -12,14 +12,23 @@ from langchain_community.vectorstores import Qdrant
 from langchain_community.vectorstores.oraclevs import OracleVS
 from langchain_community.vectorstores.utils import DistanceStrategy
 from pages.utils.htmlTemplates import bot_template, css, user_template
+import tempfile  # Import for creating temporary files
 
 
 # Function to extract text from PDF files using LangChain
 def get_pdf_text(pdf_files):
     text = ""
     for pdf_file in pdf_files:
-        loader = PyPDFLoader(pdf_file)
+        # Save the uploaded file to a temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+            temp_file.write(pdf_file.read())
+            temp_file_path = temp_file.name
+
+        # Use PyPDFLoader with the temporary file path
+        loader = PyPDFLoader(temp_file_path)
         documents = loader.load()
+
+        # Concatenate text from all pages
         for doc in documents:
             text += doc.page_content
     return text

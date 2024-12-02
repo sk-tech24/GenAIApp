@@ -10,12 +10,21 @@ from langchain_community.embeddings import CohereEmbeddings
 from langchain_community.vectorstores import Qdrant
 from langchain_community.vectorstores.oraclevs import OracleVS
 from langchain_community.vectorstores.utils import DistanceStrategy
+import tempfile  # Import for creating temporary files
 
 
 # Function to extract text from PDFs using LangChain's PyPDFLoader
 def extract_pdf_text(pdf_file):
-    loader = PyPDFLoader(pdf_file)
+    # Save the uploaded file to a temporary file
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+        temp_file.write(pdf_file.read())
+        temp_file_path = temp_file.name
+
+    # Load the PDF using PyPDFLoader
+    loader = PyPDFLoader(temp_file_path)
     pages = loader.load()
+
+    # Extract text from the pages
     text = "".join(page.page_content for page in pages)
     return text
 
