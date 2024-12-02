@@ -100,12 +100,6 @@ def handle_user_input(question):
     response = st.session_state.conversation({'question': question})
     st.session_state.chat_history = response['chat_history']
 
-    for i, message in enumerate(st.session_state.chat_history):
-        if i % 2 == 0:
-            st.write(user_template.replace("{{MSG}}", message.content), unsafe_allow_html=True)
-        else:
-            st.write(bot_template.replace("{{MSG}}", message.content), unsafe_allow_html=True)
-
 # Main function to set up the Streamlit app
 def main():
     st.set_page_config(page_title='Chat with Your own PDFs', page_icon=':books:')
@@ -131,11 +125,23 @@ def main():
         st.session_state.is_processing = False
     
     st.header('Chat with Your own PDFs :books:')
-    question = st.text_input("Ask anything to your PDF: ", key="user_input")
-
-    if question and st.session_state.conversation:
-        handle_user_input(question)
-        st.session_state.user_input = ""  # Clear the input field after submission
+    
+    # Display chat history
+    chat_container = st.container()
+    with chat_container:
+        for i, message in enumerate(st.session_state.chat_history):
+            if i % 2 == 0:
+                st.markdown(user_template.replace("{{MSG}}", message.content), unsafe_allow_html=True)
+            else:
+                st.markdown(bot_template.replace("{{MSG}}", message.content), unsafe_allow_html=True)
+    
+    # Text input at the bottom
+    input_container = st.container()
+    with input_container:
+        question = st.text_input("Ask anything to your PDF:", key="user_input")
+        if question and st.session_state.conversation:
+            handle_user_input(question)
+            st.session_state.user_input = ""  # Clear the input field after submission
     
     with st.sidebar:
         st.subheader("Upload your Documents Here: ")
@@ -158,7 +164,7 @@ def main():
                     
                     # Create conversation chain
                     st.session_state.conversation = get_conversation_chain(vector_store)
-                    st.write("DONE")
+                    st.success("DONE!")
                 except Exception as e:
                     st.error(f"An error occurred: {e}")
                 finally:
