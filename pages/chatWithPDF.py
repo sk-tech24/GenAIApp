@@ -102,6 +102,11 @@ def handle_user_input(question):
     st.session_state.chat_history = response['chat_history']
 
 
+# Function to handle submission
+def handle_submit():
+    st.session_state.user_input = ''  # Clear the input field after submission
+
+
 # Main function to set up the Streamlit app
 def main():
     st.set_page_config(page_title='Chat with Your own PDFs', page_icon=':books:')
@@ -143,10 +148,9 @@ def main():
     # Text input at the bottom
     input_container = st.container()
     with input_container:
-        question = st.text_input("Ask anything to your PDF:", key="user_input")
+        question = st.text_input("Ask anything to your PDF:", key="user_input", on_change=handle_submit)
         if question and st.session_state.conversation:
             handle_user_input(question)
-            st.session_state.user_input = ""  # Clear the input field after submission
 
     # Sidebar for file upload
     with st.sidebar:
