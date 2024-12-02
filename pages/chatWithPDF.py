@@ -5,22 +5,23 @@ from langchain.chains import ConversationalRetrievalChain
 from langchain.docstore.document import Document
 from langchain.memory import ConversationBufferMemory
 from langchain.text_splitter import CharacterTextSplitter
+from langchain.document_loaders import PyPDFLoader
 from langchain_cohere import ChatCohere
 from langchain_community.embeddings import CohereEmbeddings
 from langchain_community.vectorstores import Qdrant
 from langchain_community.vectorstores.oraclevs import OracleVS
 from langchain_community.vectorstores.utils import DistanceStrategy
 from pages.utils.htmlTemplates import bot_template, css, user_template
-from PyPDF2 import PdfReader
 
 
-# Function to extract text from PDF files
+# Function to extract text from PDF files using LangChain
 def get_pdf_text(pdf_files):
     text = ""
     for pdf_file in pdf_files:
-        reader = PdfReader(pdf_file)
-        for page in reader.pages:
-            text += page.extract_text()
+        loader = PyPDFLoader(pdf_file)
+        documents = loader.load()
+        for doc in documents:
+            text += doc.page_content
     return text
 
 # Function to split text into chunks

@@ -4,18 +4,19 @@ import streamlit as st
 from langchain.chains import RetrievalQA
 from langchain.docstore.document import Document
 from langchain.text_splitter import CharacterTextSplitter
+from langchain.document_loaders import PyPDFLoader  # Use LangChain's PyPDFLoader
 from langchain_cohere import ChatCohere
 from langchain_community.embeddings import CohereEmbeddings
 from langchain_community.vectorstores import Qdrant
 from langchain_community.vectorstores.oraclevs import OracleVS
 from langchain_community.vectorstores.utils import DistanceStrategy
-from PyPDF2 import PdfReader
 
 
-# Function to extract text from PDFs
+# Function to extract text from PDFs using LangChain's PyPDFLoader
 def extract_pdf_text(pdf_file):
-    reader = PdfReader(pdf_file)
-    text = "".join(page.extract_text() for page in reader.pages)
+    loader = PyPDFLoader(pdf_file)
+    pages = loader.load()
+    text = "".join(page.page_content for page in pages)
     return text
 
 # Function to process text into chunks
