@@ -133,8 +133,9 @@ def main():
     st.header('Chat with Your own PDFs :books:')
     question = st.text_input("Ask anything to your PDF: ")
 
-    if question:
+    if question and st.session_state.conversation:
         handle_user_input(question)
+        st.session_state.user_input = ""  # Clear the input field after submission
     
     with st.sidebar:
         st.subheader("Upload your Documents Here: ")
