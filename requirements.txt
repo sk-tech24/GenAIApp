@@ -138,6 +138,7 @@ urllib3
 watchdog
 wcwidth
 websocket-client
+wikipedia
 wsproto
 yarl
 youtube-transcript-api
