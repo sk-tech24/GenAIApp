@@ -119,7 +119,7 @@ def main():
         st.session_state.conversation = None
 
     if "chat_history" not in st.session_state:
-        st.session_state.chat_history = None
+        st.session_state.chat_history = []
 
     if "is_processing" not in st.session_state:
         st.session_state.is_processing = False
