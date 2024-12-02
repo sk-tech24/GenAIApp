@@ -131,7 +131,7 @@ def main():
         st.session_state.is_processing = False
     
     st.header('Chat with Your own PDFs :books:')
-    question = st.text_input("Ask anything to your PDF: ")
+    question = st.text_input("Ask anything to your PDF: ", key="user_input")
 
     if question and st.session_state.conversation:
         handle_user_input(question)
