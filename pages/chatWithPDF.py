@@ -101,16 +101,10 @@ def handle_user_input(question):
     response = st.session_state.conversation({'question': question})
     st.session_state.chat_history = response['chat_history']
 
-    for i, message in enumerate(st.session_state.chat_history):
-        if i % 2 == 0:
-            st.write(user_template.replace("{{MSG}}", message.content), unsafe_allow_html=True)
-        else:
-            st.write(bot_template.replace("{{MSG}}", message.content), unsafe_allow_html=True)
-
 
 # Main function to set up the Streamlit app
 def main():
-    st.set_page_config(page_title='Chat with Your own PDFs', page_icon=':books:')
+    st.set_page_config(page_title='Chat with Your own PDFs', page_icon=':books:', layout="wide")
 
     st.write(css, unsafe_allow_html=True)
 
@@ -118,17 +112,31 @@ def main():
         st.session_state.conversation = None
 
     if "chat_history" not in st.session_state:
-        st.session_state.chat_history = None
+        st.session_state.chat_history = []
 
     if "is_processing" not in st.session_state:
         st.session_state.is_processing = False
 
     st.header('Chat with Your own PDFs :books:')
-    question = st.text_input("Ask anything to your PDF:")
 
-    if question:
-        handle_user_input(question)
+    # Display chat history
+    chat_container = st.container()
+    with chat_container:
+        for i, message in enumerate(st.session_state.chat_history):
+            if i % 2 == 0:
+                st.markdown(user_template.replace("{{MSG}}", message.content), unsafe_allow_html=True)
+            else:
+                st.markdown(bot_template.replace("{{MSG}}", message.content), unsafe_allow_html=True)
 
+    # Text input at the bottom
+    input_container = st.container()
+    with input_container:
+        question = st.text_input("Ask anything to your PDF:", key="user_input")
+        if question and st.session_state.conversation:
+            handle_user_input(question)
+            st.session_state.user_input = ""  # Clear the input field after submission
+
+    # Sidebar for file upload
     with st.sidebar:
         st.subheader("Upload your Documents Here:")
         pdf_files = st.file_uploader("Choose your PDF Files", type=['pdf'], accept_multiple_files=True)
