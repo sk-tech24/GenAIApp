@@ -197,7 +197,7 @@ def parseYoutubeURL(url: str):
         return ""
 
 def main():
-    llm = ChatCohere(model="command-r-plus-08-2024")
+    llm = ChatCohere(model="command-r-plus-08-2024", )
     chain = load_qa_chain(llm, chain_type="stuff")
 
     if hasattr(chain.llm_chain.prompt, 'messages'):
@@ -205,7 +205,6 @@ def main():
             if hasattr(message, 'template'):
                 message.template = message.template.replace("Helpful Answer:", "\n### Assistant:")
 
-    # st.set_page_config(page_title="Ask Youtube Video", layout="wide")
     st.header("Ask Youtube using GEN AI")
     youtubeid = st.text_input('Add the desired Youtube video ID or URL here.')
 
@@ -223,8 +222,8 @@ def main():
         else:
             knowledge_base = fetching_transcript(youtubeid, chunk_size, chunk_overlap)
             if knowledge_base:
-                user_question = st.text_area("What do you want to ask this video?")
-                if user_question:
+                user_question = st.text_input("What do you want to ask this video?", key="user_question")
+                if user_question:  # Trigger action when user presses Enter
                     result = prompting_llm(user_question, knowledge_base, chain, k_value)
                     if result:
                         st.write(result)
