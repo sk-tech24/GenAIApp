@@ -1,12 +1,11 @@
 import os
-
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
-from pages.utils.lang_utils import (ask_to_all_pdfs_sources,
-                                    create_qa_retrievals)
+from pages.utils.lang_utils import ask_to_all_pdfs_sources, create_qa_retrievals
 from PIL import Image
 
+# Install pdf2image if not already installed
 os.system("python3 -m pip install pdf2image")
 
 # SETUP ------------------------------------------------------------------------
@@ -18,25 +17,18 @@ st.set_page_config(
     initial_sidebar_state="auto",
 )
 
-
 # Sidebar contents ------------------------------------------------------------------------
 with st.sidebar:
     st.title("LLM - PDF Comparison App")
-    st.markdown(
-        """
+    st.markdown("""
     ## About
-    This app is an pdf comparison (LLM-powered), built using:
+    This app is a PDF comparison tool (LLM-powered), built using:
     - [Streamlit](https://streamlit.io/)
     - [LangChain](https://python.langchain.com/)
-    """
-    )
-    st.write(
-        "Made with Generative AI"
-    )
-
+    """)
+    st.write("Made with Generative AI")
 
 # ROW 1 ------------------------------------------------------------------------
-
 Title_html = """
     <style>
         .title h1{
@@ -50,25 +42,17 @@ Title_html = """
           animation: slide 10s linear infinite forwards;
         }
         @keyframes slide {
-          0%{
-            background-position-x: 0%;
-          }
-          100%{
-            background-position-x: 600vw;
-          }
+          0%{ background-position-x: 0%; }
+          100%{ background-position-x: 600vw; }
         }
     </style> 
-    
     <div class="title">
         <h1>PDF comparison using Gen AI</h1>
     </div>
-    """
+"""
 components.html(Title_html)
 
 with st.form("basic_form"):
-
-    # openai_api_key = st.text_input("OpenAI API Key", key="openai_api_key")
-
     uploaded_files = st.file_uploader(
         "Upload files",
         type=["pdf"],
@@ -76,81 +60,59 @@ with st.form("basic_form"):
         accept_multiple_files=True,
     )
 
-    question_1 = st.text_input("Question 1", key="1_question")
-    question_2 = st.text_input("Question 2", key="2_question")
-    question_3 = st.text_input("Question 3", key="3_question")
-    question_4 = st.text_input("Question 4", key="4_question")
-    # question_5 = st.text_input("Question 5", key="5_question")
+    # Questions
+    questions = [st.text_input(f"Question {i+1}", key=f"{i+1}_question") for i in range(4)]
 
     submit_btn = st.form_submit_button("Start Processing")
 
     if submit_btn:
-        # if openai_api_key == "":
-        #     st.warning("You need an API key from OpenAI to use thise App")
-        #     st.stop()
-
-        if question_1 == "":
+        # Validate inputs
+        if not any(questions):
             st.warning("Give at least one question")
             st.stop()
 
-        if uploaded_files is None:
-            st.warning("Upload at least 1 PDf file")
+        if not uploaded_files:
+            st.warning("Upload at least one PDF file")
             st.stop()
-        all_questions = [
-            question_1,
-            question_2,
-            question_3,
-            question_4,
-        ]  # , question_5]
-        with st.spinner("Creating embeddings...."):
+
+        # Process files and questions
+        with st.spinner("Creating embeddings..."):
             try:
-
-                st.session_state.qa_retrievals = create_qa_retrievals(
-                    uploaded_files
-                )
-                st.session_state.questions = all_questions
+                st.session_state.qa_retrievals = create_qa_retrievals(uploaded_files)
+                st.session_state.questions = [q for q in questions if q]  # Filter empty questions
             except Exception as e:
-
-                st.error("Something went grong...")
+                st.error("An error occurred while creating embeddings.")
                 st.exception(e)
                 st.stop()
-        st.success("Done!", icon="✅")
-        with st.spinner("Doing Analysis...."):
 
+        st.success("Embeddings created!", icon="✅")
+
+        with st.spinner("Performing analysis..."):
             try:
-                data = []
+                results = []
                 for question in st.session_state.questions:
-                    if question == "":
-                        continue
-                    results = ask_to_all_pdfs_sources(
-                        question, st.session_state.qa_retrievals
-                    )
-                    data.extend(results)
-                st.session_state.data = data
+                    if question:
+                        results.extend(ask_to_all_pdfs_sources(question, st.session_state.qa_retrievals))
 
+                st.session_state.data = results
             except Exception as e:
-
-                st.error("Something went grong...")
+                st.error("An error occurred during analysis.")
                 st.exception(e)
                 st.stop()
-        st.success("Done!", icon="✅")
-        with st.spinner("Doing Analysis.."):
+
+        st.success("Analysis complete!", icon="✅")
+
+        with st.spinner("Formatting results..."):
             try:
                 df = pd.DataFrame(st.session_state.data)
-                print("Jay values are")
-                print(df)
                 if df.duplicated(subset=["query", "source_document"]).any():
-                   st.warning("Duplicate entries found. Removing duplicates...")
-                   df = df.drop_duplicates(subset=["query", "source_document"])
-                st.table(
-                    df.pivot(
-                        index="query", columns="source_document", values="response"
-                    )
-                )
+                    st.warning("Duplicate entries found. Removing duplicates...")
+                    df = df.drop_duplicates(subset=["query", "source_document"])
 
+                st.table(df.pivot(index="query", columns="source_document", values="response"))
             except Exception as e:
-
-                st.error("Something went grong...")
+                st.error("An error occurred while formatting the results.")
                 st.exception(e)
                 st.stop()
+
         st.balloons()
