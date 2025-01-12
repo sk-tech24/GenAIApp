@@ -15,8 +15,8 @@ from langchain_community.vectorstores.utils import DistanceStrategy
 from pages.utils.htmlTemplates import bot_template, css, user_template
 import pages.utils.config as config
 import time
-from collections import deque
 from sentence_transformers import SentenceTransformer
+from langchain.embeddings import HuggingFaceEmbeddings
 
 # Initialize Sentence Transformers model
 embeddings = SentenceTransformer('all-MiniLM-L6-v2')  # You can choose any available model
@@ -59,74 +59,30 @@ def get_chunk_text(text):
         raise RuntimeError("Failed to split text into chunks.")
     return chunks
 
-def rate_limited_embedding_with_token_limit(documents, embeddings, token_limit=90000):
-    """
-    Embed documents with a token usage limit (90,000 tokens/min) and rate limiting.
-    """
-    call_timestamps = deque()  # Track timestamps of API calls
-    tokens_used = 0            # Track tokens used in the last minute
-
-    logger.info(
-        "Using Cohere Trial API key, limited to 90,000 tokens per minute. "
-        "Consider upgrading for higher rate limits: https://dashboard.cohere.com/api-keys"
-    )
-
-    for doc in documents:
-        current_time = time.time()
-        doc_tokens = len(doc.page_content.split())  # Approximate token count
-
-        # Remove old calls and tokens from the past minute
-        while call_timestamps and current_time - call_timestamps[0][0] > 60:
-            _, old_tokens = call_timestamps.popleft()
-            tokens_used -= old_tokens
-
-        # Check token usage limit
-        if tokens_used + doc_tokens > token_limit:
-            time_to_wait = 60 - (current_time - call_timestamps[0][0])
-            logger.warning(
-                f"Token limit reached ({tokens_used}/{token_limit} tokens). "
-                f"Sleeping for {time_to_wait:.2f} seconds."
-            )
-            time.sleep(max(0, time_to_wait))
-
-        # Embed the document
-        try:
-            embedding = embeddings.embed_documents([doc.page_content])
-            call_timestamps.append((time.time(), doc_tokens))  # Log the API call and tokens used
-            tokens_used += doc_tokens
-            yield embedding
-        except Exception as e:
-            logger.error(f"Failed to embed document: {e}")
-            raise
-
-def embed_documents(documents, model):
-    """Embed documents using Sentence Transformers."""
-    try:
-        logger.info("Embedding documents using Sentence Transformers...")
-        return [model.encode(doc.page_content) for doc in documents]
-    except Exception as e:
-        logger.error(f"Failed to embed documents: {e}")
-        raise RuntimeError("An error occurred during document embedding.")
-
 def get_vector_store(text_chunks):
-    """Create a vector store for document retrieval."""
+    """
+    Create a vector store for document retrieval using Sentence Transformer embeddings.
+    """
     try:
-        logger.info("Initializing Sentence Transformers embeddings...")
-        model = SentenceTransformer('all-MiniLM-L6-v2')  # Choose a model
-
-        # Create document objects
+        logger.info("Initializing Sentence Transformer embeddings...")
+        
+        # Initialize Sentence Transformer model
+        embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")  # Choose a suitable model
+        
+        # Convert text chunks to Document objects
         documents = [Document(page_content=chunk) for chunk in text_chunks]
-
-        # Embed documents
-        embeddings = embed_documents(documents, model)
-
+        
         # Create vector store
         logger.info("Creating vector store...")
         if config.DB_TYPE == "oracle":
-            connection = oracledb.connect(user=config.ORACLE_USERNAME, password=config.ORACLE_PASSWORD, dsn=config.ORACLE_DSN)
+            connection = oracledb.connect(
+                user=config.ORACLE_USERNAME, 
+                password=config.ORACLE_PASSWORD, 
+                dsn=config.ORACLE_DSN
+            )
             vectorstore = OracleVS.from_documents(
                 documents=documents,
-                embedding=embeddings,
+                embedding=embedding_model,
                 client=connection,
                 table_name=config.ORACLE_TABLE_NAME,
                 distance_strategy=DistanceStrategy.DOT_PRODUCT
@@ -134,7 +90,7 @@ def get_vector_store(text_chunks):
         else:
             vectorstore = Qdrant.from_documents(
                 documents=documents,
-                embedding=embeddings,
+                embedding=embedding_model,
                 location=config.QDRANT_LOCATION,
                 collection_name=config.QDRANT_COLLECTION_NAME,
                 distance_func=config.QDRANT_DISTANCE_FUNC
