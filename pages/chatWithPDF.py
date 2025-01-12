@@ -16,7 +16,10 @@ from pages.utils.htmlTemplates import bot_template, css, user_template
 import pages.utils.config as config
 import time
 from collections import deque
+from sentence_transformers import SentenceTransformer
 
+# Initialize Sentence Transformers model
+embeddings = SentenceTransformer('all-MiniLM-L6-v2')  # You can choose any available model
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -96,31 +99,34 @@ def rate_limited_embedding_with_token_limit(documents, embeddings, token_limit=9
             logger.error(f"Failed to embed document: {e}")
             raise
 
-def get_vector_store(text_chunks):
-    """
-    Create a vector store for document retrieval with rate-limited embeddings.
-    """
+def embed_documents(documents, model):
+    """Embed documents using Sentence Transformers."""
     try:
-        logger.info("Initializing embeddings...")
-        embeddings = CohereEmbeddings(
-            model=config.EMBEDDING_MODEL,
-            user_agent="langchain"
-        )
+        logger.info("Embedding documents using Sentence Transformers...")
+        return [model.encode(doc.page_content) for doc in documents]
+    except Exception as e:
+        logger.error(f"Failed to embed documents: {e}")
+        raise RuntimeError("An error occurred during document embedding.")
+
+def get_vector_store(text_chunks):
+    """Create a vector store for document retrieval."""
+    try:
+        logger.info("Initializing Sentence Transformers embeddings...")
+        model = SentenceTransformer('all-MiniLM-L6-v2')  # Choose a model
+
+        # Create document objects
         documents = [Document(page_content=chunk) for chunk in text_chunks]
 
-        # Use the rate-limited embedding generator
-        logger.info("Embedding documents with token and rate limits...")
-        embedded_docs = []
-        for embedded in rate_limited_embedding_with_token_limit(documents, embeddings, token_limit=90000):
-            embedded_docs.extend(embedded)
+        # Embed documents
+        embeddings = embed_documents(documents, model)
 
-        # Create vector store using the embedded documents
+        # Create vector store
         logger.info("Creating vector store...")
         if config.DB_TYPE == "oracle":
             connection = oracledb.connect(user=config.ORACLE_USERNAME, password=config.ORACLE_PASSWORD, dsn=config.ORACLE_DSN)
             vectorstore = OracleVS.from_documents(
                 documents=documents,
-                embedding=embedded_docs,
+                embedding=embeddings,
                 client=connection,
                 table_name=config.ORACLE_TABLE_NAME,
                 distance_strategy=DistanceStrategy.DOT_PRODUCT
@@ -128,7 +134,7 @@ def get_vector_store(text_chunks):
         else:
             vectorstore = Qdrant.from_documents(
                 documents=documents,
-                embedding=embedded_docs,
+                embedding=embeddings,
                 location=config.QDRANT_LOCATION,
                 collection_name=config.QDRANT_COLLECTION_NAME,
                 distance_func=config.QDRANT_DISTANCE_FUNC

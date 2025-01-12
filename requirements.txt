@@ -110,6 +110,7 @@ rpds-py
 safetensors
 scipy
 selenium
+sentence-transformers
 six
 smmap
 sniffio
