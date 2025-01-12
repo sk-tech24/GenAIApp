@@ -15,7 +15,7 @@ from langchain_community.vectorstores import Qdrant
 from langchain_community.vectorstores.oraclevs import OracleVS
 from langchain_community.vectorstores.utils import DistanceStrategy
 from pages.utils.style import set_page_config
-from youtube_transcript_api import YouTubeTranscriptApi, YouTubeTranscriptApiException
+from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api.formatters import TextFormatter
 from sentence_transformers import SentenceTransformer
 from langchain.embeddings import HuggingFaceEmbeddings
@@ -76,16 +76,10 @@ def fetching_transcript(youtubeid, chunk_size, chunk_overlap):
     try:
         # Attempt to fetch transcript
         transcript = YouTubeTranscriptApi.get_transcript(youtubeid, languages=['pt', 'en'])
-    except YouTubeTranscriptApiException as e:
-        # Handle the error where transcripts are disabled
-        if e.error_code == 403:
-            st.error("Transcripts are disabled for this video. Please try with a different video.")
-        else:
-            st.error("Failed to fetch YouTube transcript. Please check the video ID or try again later.")
-        return None
     except Exception as e:
+        # General exception catch
         print(f"Error fetching transcript: {e}")
-        st.error("Failed to fetch YouTube transcript. Please check the video ID or try again later.")
+        st.error(f"Failed to fetch YouTube transcript. {str(e)}")
         return None
     
     formatter = TextFormatter()
