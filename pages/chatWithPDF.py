@@ -14,6 +14,7 @@ from langchain_community.vectorstores.oraclevs import OracleVS
 from langchain_community.vectorstores.utils import DistanceStrategy
 from pages.utils.htmlTemplates import bot_template, css, user_template
 import pages.utils.config as config
+import time
 
 
 # Setup logging
@@ -54,8 +55,37 @@ def get_chunk_text(text):
         raise RuntimeError("Failed to split text into chunks.")
     return chunks
 
+def rate_limited_embedding(documents, embeddings, token_limit=100000, tokens_per_request=5000):
+    """
+    Embed documents with rate limiting to stay within the API token usage limit.
+    """
+    total_tokens = 0
+    start_time = time.time()
+
+    for doc in documents:
+        # Estimate tokens in the current document (1 token ≈ 4 characters)
+        tokens_in_doc = len(doc.page_content) // 4  
+        total_tokens += tokens_in_doc
+
+        # Check if we're exceeding the token limit
+        if total_tokens > token_limit:
+            elapsed_time = time.time() - start_time
+            if elapsed_time < 60:  # Ensure one-minute window
+                time_to_wait = 60 - elapsed_time
+                print(f"Rate limit reached. Sleeping for {time_to_wait:.2f} seconds.")
+                time.sleep(time_to_wait)
+
+            # Reset for the next minute
+            total_tokens = tokens_in_doc
+            start_time = time.time()
+
+        # Make the API call to embed the document
+        yield embeddings.embed_documents([doc.page_content])
+
 def get_vector_store(text_chunks):
-    """Create a vector store for document retrieval."""
+    """
+    Create a vector store for document retrieval with rate-limited embeddings.
+    """
     try:
         embeddings = CohereEmbeddings(
             model=config.EMBEDDING_MODEL,
@@ -63,11 +93,17 @@ def get_vector_store(text_chunks):
         )
         documents = [Document(page_content=chunk) for chunk in text_chunks]
 
+        # Use the rate-limited embedding generator
+        embedded_docs = []
+        for embedded in rate_limited_embedding(documents, embeddings):
+            embedded_docs.extend(embedded)
+
+        # Create vector store using the embedded documents
         if config.DB_TYPE == "oracle":
             connection = oracledb.connect(user=config.ORACLE_USERNAME, password=config.ORACLE_PASSWORD, dsn=config.ORACLE_DSN)
             vectorstore = OracleVS.from_documents(
                 documents=documents,
-                embedding=embeddings,
+                embedding=embedded_docs,
                 client=connection,
                 table_name=config.ORACLE_TABLE_NAME,
                 distance_strategy=DistanceStrategy.DOT_PRODUCT
@@ -75,7 +111,7 @@ def get_vector_store(text_chunks):
         else:
             vectorstore = Qdrant.from_documents(
                 documents=documents,
-                embedding=embeddings,
+                embedding=embedded_docs,
                 location=config.QDRANT_LOCATION,
                 collection_name=config.QDRANT_COLLECTION_NAME,
                 distance_func=config.QDRANT_DISTANCE_FUNC
