@@ -56,34 +56,44 @@ def get_chunk_text(text):
         raise RuntimeError("Failed to split text into chunks.")
     return chunks
 
-def rate_limited_embedding(documents, embeddings, call_limit=40):
+def rate_limited_embedding_with_token_limit(documents, embeddings, token_limit=90000):
     """
-    Embed documents with rate limiting to stay within the API call limit.
+    Embed documents with a token usage limit (90,000 tokens/min) and rate limiting.
     """
-    call_timestamps = deque()  # Store timestamps of the last `call_limit` calls
-    start_time = time.time()
+    call_timestamps = deque()  # Track timestamps of API calls
+    tokens_used = 0            # Track tokens used in the last minute
+
+    logger.info(
+        "Using Cohere Trial API key, limited to 90,000 tokens per minute. "
+        "Consider upgrading for higher rate limits: https://dashboard.cohere.com/api-keys"
+    )
 
     for doc in documents:
-        # Check and enforce the API call rate limit
         current_time = time.time()
-        
-        # Remove calls older than 60 seconds from the deque
-        while call_timestamps and current_time - call_timestamps[0] > 60:
-            call_timestamps.popleft()
+        doc_tokens = len(doc.page_content.split())  # Approximate token count
 
-        # If we've hit the call limit, wait for the earliest call to expire
-        if len(call_timestamps) >= call_limit:
-            time_to_wait = 60 - (current_time - call_timestamps[0])
-            print(f"API call limit reached. Sleeping for {time_to_wait:.2f} seconds.")
-            time.sleep(time_to_wait)
+        # Remove old calls and tokens from the past minute
+        while call_timestamps and current_time - call_timestamps[0][0] > 60:
+            _, old_tokens = call_timestamps.popleft()
+            tokens_used -= old_tokens
 
-        # Make the API call to embed the document
+        # Check token usage limit
+        if tokens_used + doc_tokens > token_limit:
+            time_to_wait = 60 - (current_time - call_timestamps[0][0])
+            logger.warning(
+                f"Token limit reached ({tokens_used}/{token_limit} tokens). "
+                f"Sleeping for {time_to_wait:.2f} seconds."
+            )
+            time.sleep(max(0, time_to_wait))
+
+        # Embed the document
         try:
             embedding = embeddings.embed_documents([doc.page_content])
-            call_timestamps.append(time.time())  # Log the time of this API call
+            call_timestamps.append((time.time(), doc_tokens))  # Log the API call and tokens used
+            tokens_used += doc_tokens
             yield embedding
         except Exception as e:
-            print(f"Failed to embed document: {e}")
+            logger.error(f"Failed to embed document: {e}")
             raise
 
 def get_vector_store(text_chunks):
@@ -91,6 +101,7 @@ def get_vector_store(text_chunks):
     Create a vector store for document retrieval with rate-limited embeddings.
     """
     try:
+        logger.info("Initializing embeddings...")
         embeddings = CohereEmbeddings(
             model=config.EMBEDDING_MODEL,
             user_agent="langchain"
@@ -98,11 +109,13 @@ def get_vector_store(text_chunks):
         documents = [Document(page_content=chunk) for chunk in text_chunks]
 
         # Use the rate-limited embedding generator
+        logger.info("Embedding documents with token and rate limits...")
         embedded_docs = []
-        for embedded in rate_limited_embedding(documents, embeddings, call_limit=40):
+        for embedded in rate_limited_embedding_with_token_limit(documents, embeddings, token_limit=90000):
             embedded_docs.extend(embedded)
 
         # Create vector store using the embedded documents
+        logger.info("Creating vector store...")
         if config.DB_TYPE == "oracle":
             connection = oracledb.connect(user=config.ORACLE_USERNAME, password=config.ORACLE_PASSWORD, dsn=config.ORACLE_DSN)
             vectorstore = OracleVS.from_documents(
@@ -120,6 +133,7 @@ def get_vector_store(text_chunks):
                 collection_name=config.QDRANT_COLLECTION_NAME,
                 distance_func=config.QDRANT_DISTANCE_FUNC
             )
+        logger.info("Vector store creation successful.")
     except oracledb.DatabaseError as db_error:
         logger.error(f"Database error: {db_error}")
         raise RuntimeError("Failed to connect to the Oracle database.")
