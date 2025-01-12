@@ -15,6 +15,7 @@ from langchain_community.vectorstores.utils import DistanceStrategy
 from pages.utils.htmlTemplates import bot_template, css, user_template
 import pages.utils.config as config
 import time
+from collections import deque
 
 
 # Setup logging
@@ -55,32 +56,35 @@ def get_chunk_text(text):
         raise RuntimeError("Failed to split text into chunks.")
     return chunks
 
-def rate_limited_embedding(documents, embeddings, token_limit=100000, tokens_per_request=5000):
+def rate_limited_embedding(documents, embeddings, call_limit=40):
     """
-    Embed documents with rate limiting to stay within the API token usage limit.
+    Embed documents with rate limiting to stay within the API call limit.
     """
-    total_tokens = 0
+    call_timestamps = deque()  # Store timestamps of the last `call_limit` calls
     start_time = time.time()
 
     for doc in documents:
-        # Estimate tokens in the current document (1 token ≈ 4 characters)
-        tokens_in_doc = len(doc.page_content) // 4  
-        total_tokens += tokens_in_doc
+        # Check and enforce the API call rate limit
+        current_time = time.time()
+        
+        # Remove calls older than 60 seconds from the deque
+        while call_timestamps and current_time - call_timestamps[0] > 60:
+            call_timestamps.popleft()
 
-        # Check if we're exceeding the token limit
-        if total_tokens > token_limit:
-            elapsed_time = time.time() - start_time
-            if elapsed_time < 60:  # Ensure one-minute window
-                time_to_wait = 60 - elapsed_time
-                print(f"Rate limit reached. Sleeping for {time_to_wait:.2f} seconds.")
-                time.sleep(time_to_wait)
-
-            # Reset for the next minute
-            total_tokens = tokens_in_doc
-            start_time = time.time()
+        # If we've hit the call limit, wait for the earliest call to expire
+        if len(call_timestamps) >= call_limit:
+            time_to_wait = 60 - (current_time - call_timestamps[0])
+            print(f"API call limit reached. Sleeping for {time_to_wait:.2f} seconds.")
+            time.sleep(time_to_wait)
 
         # Make the API call to embed the document
-        yield embeddings.embed_documents([doc.page_content])
+        try:
+            embedding = embeddings.embed_documents([doc.page_content])
+            call_timestamps.append(time.time())  # Log the time of this API call
+            yield embedding
+        except Exception as e:
+            print(f"Failed to embed document: {e}")
+            raise
 
 def get_vector_store(text_chunks):
     """
@@ -95,7 +99,7 @@ def get_vector_store(text_chunks):
 
         # Use the rate-limited embedding generator
         embedded_docs = []
-        for embedded in rate_limited_embedding(documents, embeddings):
+        for embedded in rate_limited_embedding(documents, embeddings, call_limit=40):
             embedded_docs.extend(embedded)
 
         # Create vector store using the embedded documents
