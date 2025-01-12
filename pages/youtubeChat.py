@@ -15,9 +15,8 @@ from langchain_community.vectorstores import Qdrant
 from langchain_community.vectorstores.oraclevs import OracleVS
 from langchain_community.vectorstores.utils import DistanceStrategy
 from pages.utils.style import set_page_config
-from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api import YouTubeTranscriptApi, YouTubeTranscriptApiException
 from youtube_transcript_api.formatters import TextFormatter
-from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound
 from sentence_transformers import SentenceTransformer
 from langchain.embeddings import HuggingFaceEmbeddings
 
@@ -67,24 +66,28 @@ def fetching_youtubeid(youtubeid):
     else:
         raise ValueError("Invalid YouTube ID format.")
 
+
 @timeit
-@st.cache_resource(show_spinner="Fetching data from YouTube...")
+@st.cache_resource(show_spinner="Fetching data from Youtube...")
 @handle_exception
 def fetching_transcript(youtubeid, chunk_size, chunk_overlap):
     youtubeid = fetching_youtubeid(youtubeid)
+    
     try:
+        # Attempt to fetch transcript
         transcript = YouTubeTranscriptApi.get_transcript(youtubeid, languages=['pt', 'en'])
-    except NoTranscriptFound:
-        st.error("No transcript found for this video. Please check if the video has subtitles.")
-        return None
-    except TranscriptsDisabled:
-        st.error("Transcripts are disabled for this video.")
+    except YouTubeTranscriptApiException as e:
+        # Handle the error where transcripts are disabled
+        if e.error_code == 403:
+            st.error("Transcripts are disabled for this video. Please try with a different video.")
+        else:
+            st.error("Failed to fetch YouTube transcript. Please check the video ID or try again later.")
         return None
     except Exception as e:
         print(f"Error fetching transcript: {e}")
         st.error("Failed to fetch YouTube transcript. Please check the video ID or try again later.")
         return None
-
+    
     formatter = TextFormatter()
     text = formatter.format_transcript(transcript)
 
@@ -93,26 +96,37 @@ def fetching_transcript(youtubeid, chunk_size, chunk_overlap):
     )
     chunks = text_splitter.split_text(text)
 
+    # Use OCIGenAIEmbeddings for embeddings
     embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+
     if config.DB_TYPE == "oracle":
         try:
             connection = oracledb.connect(user=config.ORACLE_USERNAME, password=config.ORACLE_PASSWORD, dsn=config.ORACLE_DSN)
+            print("Connection to OracleDB successful!")
+        except oracledb.DatabaseError as db_err:
+            print(f"Oracle connection error: {db_err}")
+            st.error("Failed to connect to OracleDB. Please check the database connection or configuration.")
+            return None
         except Exception as e:
             print(f"Error connecting to OracleDB: {e}")
-            st.error("An error occurred while connecting to OracleDB. Please check the database connection.")
+            st.error("An error occurred while connecting to OracleDB. Please try again later.")
             return None
-        try:
-            knowledge_base = OracleVS.from_texts(
-                chunks,
-                embeddings,
-                client=connection,
-                table_name=config.ORACLE_TABLE_NAME,
-                distance_strategy=DistanceStrategy.DOT_PRODUCT,
-            )
-        except Exception as e:
-            print(f"Error creating knowledge base from OracleDB: {e}")
-            st.error("Failed to create knowledge base from OracleDB.")
-            return None
+        
+        if connection:
+            try:
+                knowledge_base = OracleVS.from_texts(
+                    chunks,
+                    embeddings,
+                    client=connection,
+                    table_name=config.ORACLE_TABLE_NAME,
+                    distance_strategy=DistanceStrategy.DOT_PRODUCT,
+                )
+            except Exception as e:
+                print(f"Error creating knowledge base from Oracle: {e}")
+                st.error("Failed to create knowledge base from OracleDB. Please check the configuration.")
+                return None
+        else:
+            raise Exception("Failed to connect to OracleDB.")
     else:
         try:
             knowledge_base = Qdrant.from_texts(
@@ -123,8 +137,8 @@ def fetching_transcript(youtubeid, chunk_size, chunk_overlap):
                 distance_func=config.QDRANT_DISTANCE_FUNC
             )
         except Exception as e:
-            print(f"Error creating knowledge base using Qdrant: {e}")
-            st.error("Failed to create knowledge base using Qdrant.")
+            print(f"Error creating knowledge base from Qdrant: {e}")
+            st.error("Failed to create knowledge base using Qdrant. Please check the configuration.")
             return None
 
     return knowledge_base
@@ -195,7 +209,7 @@ def parseYoutubeURL(url: str):
         return ""
 
 def main():
-    llm = ChatCohere(model="command-r-plus-08-2024")
+    llm = ChatCohere(model="command-r-plus-08-2024", )
     chain = load_qa_chain(llm, chain_type="stuff")
 
     if hasattr(chain.llm_chain.prompt, 'messages'):
@@ -203,28 +217,28 @@ def main():
             if hasattr(message, 'template'):
                 message.template = message.template.replace("Helpful Answer:", "\n### Assistant:")
 
-    st.header("Ask YouTube Using GEN AI")
-    youtubeid = st.text_input('Add the desired YouTube video ID or URL here.')
+    st.header("Ask Youtube using GEN AI")
+    youtubeid = st.text_input('Add the desired Youtube video ID or URL here.')
 
     with st.expander("Advanced options"):
         k_value = st.slider('Top K search | default = 6', 2, 10, 6)
         chunk_size = st.slider('Chunk size | default = 1000 [Rebuilds the Vector store]', 500, 1500, 1000, step=20)
         chunk_overlap = st.slider('Chunk overlap | default = 20 [Rebuilds the Vector store]', 0, 400, 200, step=20)
+        chunk_display = st.checkbox('Show chunk text', False)
 
     if youtubeid:
-        try:
-            youtubeid = fetching_youtubeid(youtubeid)
-        except ValueError as e:
-            st.error(f"Input Error: {e}")
-            return
-
-        knowledge_base = fetching_transcript(youtubeid, chunk_size, chunk_overlap)
-        if knowledge_base:
-            user_question = st.text_input("What do you want to ask this video?", key="user_question")
-            if user_question:
-                result = prompting_llm(user_question, knowledge_base, chain, k_value)
-                if result:
-                    st.write(result)
+        # Check if it's a valid youtube link
+        youtubeid = fetching_youtubeid(youtubeid)
+        if not youtubeid:
+            st.error("Invalid YouTube ID")
+        else:
+            knowledge_base = fetching_transcript(youtubeid, chunk_size, chunk_overlap)
+            if knowledge_base:
+                user_question = st.text_input("What do you want to ask this video?", key="user_question")
+                if user_question:  # Trigger action when user presses Enter
+                    result = prompting_llm(user_question, knowledge_base, chain, k_value)
+                    if result:
+                        st.write(result)
 
 #-------------------------------------------------------------------
 if __name__ == "__main__":
