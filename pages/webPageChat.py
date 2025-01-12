@@ -21,6 +21,9 @@ from langchain_community.vectorstores.utils import DistanceStrategy
 from pages.utils.style import set_page_config
 from playwright.sync_api import sync_playwright
 import pages.utils.config as config
+from sentence_transformers import SentenceTransformer
+from langchain.embeddings import HuggingFaceEmbeddings
+
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -57,10 +60,12 @@ def timeit(func):
 @timeit
 @st.cache_data(show_spinner="Fetching data from Wikipedia...")
 def fetching_article(wikipediatopic, chunk_size, chunk_overlap):
-    embeddings = CohereEmbeddings(
-        model=config.EMBEDDING_MODEL,
-        user_agent="langchain"
-    )
+    # embeddings = CohereEmbeddings(
+    #     model=config.EMBEDDING_MODEL,
+    #     user_agent="langchain"
+    # )
+    # Initialize Sentence Transformer model
+    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
     wikipage = WikipediaQueryRun(api_wrapper=WikipediaAPIWrapper())
     text = wikipage.run(wikipediatopic)

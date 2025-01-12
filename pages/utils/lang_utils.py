@@ -11,7 +11,8 @@ from langchain_community.vectorstores import Qdrant
 from langchain_community.vectorstores.oraclevs import OracleVS
 from langchain_community.vectorstores.utils import DistanceStrategy
 import tempfile  # Import for creating temporary files
-
+from sentence_transformers import SentenceTransformer
+from langchain.embeddings import HuggingFaceEmbeddings
 
 # Function to extract text from PDFs using LangChain's PyPDFLoader
 def extract_pdf_text(pdf_file):
@@ -41,10 +42,12 @@ def get_text_chunks(text):
 # Function to process PDF files and create QA retrieval chains
 def create_qa_retrievals(pdf_file_list: list):
     qa_retrievals = []
-    embeddings = CohereEmbeddings(
-        model=config.EMBEDDING_MODEL,  # Replace with your Cohere model name
-        user_agent="langchain"
-    )
+    # embeddings = CohereEmbeddings(
+    #     model=config.EMBEDDING_MODEL,  # Replace with your Cohere model name
+    #     user_agent="langchain"
+    # )
+    # Initialize Sentence Transformer model
+    embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
     for pdf in pdf_file_list:
         try:
@@ -68,7 +71,7 @@ def create_qa_retrievals(pdf_file_list: list):
                 )
                 vector_db = OracleVS.from_documents(
                     documents=documents,
-                    embedding=embeddings,
+                    embedding=embedding_model,
                     client=connection,
                     table_name=config.ORACLE_TABLE_NAME,
                     distance_strategy=DistanceStrategy.DOT_PRODUCT
@@ -77,7 +80,7 @@ def create_qa_retrievals(pdf_file_list: list):
             else:
                 vector_db = Qdrant.from_documents(
                     documents=documents,
-                    embedding=embeddings,
+                    embedding=embedding_model,
                     location=config.QDRANT_LOCATION,
                     collection_name=pdf.name,
                 )
