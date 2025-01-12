@@ -120,10 +120,11 @@ def fetch_dynamic_page_with_playwright(url: str) -> str:
 @timeit
 @st.cache_resource(show_spinner="Fetching data from URL...")
 def fetching_url(userinputquery, chunk_size, chunk_overlap):
-    embeddings = CohereEmbeddings(
-        model=config.EMBEDDING_MODEL,
-        user_agent="langchain"
-    )
+    # embeddings = CohereEmbeddings(
+    #     model=config.EMBEDDING_MODEL,
+    #     user_agent="langchain"
+    # )
+    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
     try:
         html_content = fetch_dynamic_page_with_playwright(userinputquery)
